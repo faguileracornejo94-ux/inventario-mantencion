@@ -1,0 +1,72 @@
+{% extends "base.html" %}
+{% block title %}Dashboard — Inventario Bodega{% endblock %}
+{% block content %}
+<div class="page-title">Dashboard</div>
+
+<div class="stat-row">
+  <div class="stat-tile">
+    <div class="value">{{ total_componentes }}</div>
+    <div class="label">Componentes</div>
+  </div>
+  <div class="stat-tile">
+    <div class="value">{{ total_unidades }}</div>
+    <div class="label">Unidades totales</div>
+  </div>
+  <div class="stat-tile warn">
+    <div class="value">{{ sin_stock }}</div>
+    <div class="label">Bajo stock mínimo</div>
+  </div>
+  <div class="stat-tile">
+    <div class="value">{{ movimientos_hoy }}</div>
+    <div class="label">Movimientos hoy</div>
+  </div>
+</div>
+
+{% if bajo_stock %}
+<div class="card">
+  <strong>Componentes bajo stock mínimo</strong>
+  <div class="table-wrap" style="margin-top:10px;">
+    <table>
+      <thead><tr><th>Código</th><th>Nombre</th>{% if session_rol == 'admin' %}<th>Área</th>{% endif %}<th>Stock</th><th>Mínimo</th></tr></thead>
+      <tbody>
+        {% for c in bajo_stock %}
+        <tr class="low-stock">
+          <td>{{ c['codigo'] }}</td>
+          <td>{{ c['nombre'] }}</td>
+          {% if session_rol == 'admin' %}<td><span class="badge {{ c['area'] }}">{{ AREAS[c['area']] }}</span></td>{% endif %}
+          <td>{{ c['cantidad'] }}</td>
+          <td>{{ c['stock_minimo'] }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endif %}
+
+<div class="card">
+  <strong>Últimos movimientos</strong>
+  <div class="table-wrap" style="margin-top:10px;">
+    {% if ultimos_movimientos %}
+    <table>
+      <thead><tr><th>Fecha</th><th>Código</th><th>Nombre</th>{% if session_rol == 'admin' %}<th>Área</th>{% endif %}<th>Tipo</th><th>Cantidad</th><th>Usuario</th></tr></thead>
+      <tbody>
+        {% for m in ultimos_movimientos %}
+        <tr>
+          <td>{{ m['fecha'] }}</td>
+          <td>{{ m['codigo'] }}</td>
+          <td>{{ m['nombre'] }}</td>
+          {% if session_rol == 'admin' %}<td><span class="badge {{ m['area'] }}">{{ AREAS[m['area']] }}</span></td>{% endif %}
+          <td><span class="badge {{ m['tipo'] }}">{{ 'Ingreso' if m['tipo'] == 'ingreso' else 'Retiro' }}</span></td>
+          <td>{{ m['cantidad'] }}</td>
+          <td>{{ m['usuario'] }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <div class="empty-state">Aún no hay movimientos registrados.</div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}
