@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% block title %}Buscar — Inventario Bodega{% endblock %}
+{% block content %}
+<div class="page-title">Buscar componente</div>
+
+<form method="get" class="actions">
+  <input type="text" name="q" value="{{ q }}" placeholder="Código, nombre, categoría o ubicación..." autofocus style="max-width:360px;">
+  <button type="submit" class="btn btn-primary">Buscar</button>
+</form>
+
+{% if q %}
+  {% if resultados %}
+  <div class="card table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Código</th><th>Nombre</th><th>Categoría</th><th>Ubicación</th>
+          {% if session_rol == 'admin' %}<th>Área</th>{% endif %}
+          <th>Stock</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for c in resultados %}
+        <tr {% if c['cantidad'] <= c['stock_minimo'] %}class="low-stock"{% endif %}>
+          <td>{{ c['codigo'] }}</td>
+          <td><a href="{{ url_for('componente_editar', comp_id=c['id']) }}">{{ c['nombre'] }}</a></td>
+          <td>{{ c['categoria'] or '—' }}</td>
+          <td>{{ c['ubicacion'] or '—' }}</td>
+          {% if session_rol == 'admin' %}<td><span class="badge {{ c['area'] }}">{{ AREAS[c['area']] }}</span></td>{% endif %}
+          <td>{{ c['cantidad'] }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="card empty-state">Sin resultados para "{{ q }}".</div>
+  {% endif %}
+{% endif %}
+{% endblock %}
