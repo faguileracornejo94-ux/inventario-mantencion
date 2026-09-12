@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% block title %}{{ 'Editar' if editar else 'Nuevo' }} usuario{% endblock %}
+{% block content %}
+<div class="page-title">{{ 'Editar usuario' if editar else 'Nuevo usuario' }}</div>
+
+<div class="card" style="max-width:480px;">
+  <form method="post">
+    <div class="form-group">
+      <label for="username">Nombre de usuario</label>
+      <input type="text" id="username" name="username" value="{{ usuario['username'] if usuario else '' }}"
+             {% if editar %}disabled{% else %}required{% endif %}>
+    </div>
+    <div class="form-group">
+      <label for="nombre">Nombre completo</label>
+      <input type="text" id="nombre" name="nombre" value="{{ usuario['nombre'] if usuario else '' }}" required>
+    </div>
+    <div class="form-group">
+      <label for="rol">Rol / Área</label>
+      <select id="rol" name="rol" required>
+        <option value="">Selecciona</option>
+        <option value="admin" {% if usuario and usuario['rol'] == 'admin' %}selected{% endif %}>Administrador (ve ambas áreas)</option>
+        {% for code, label in AREAS.items() %}
+          <option value="{{ code }}" {% if usuario and usuario['rol'] == code %}selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="form-group">
+      <label for="password">{{ 'Nueva contraseña (dejar en blanco para no cambiar)' if editar else 'Contraseña' }}</label>
+      <input type="password" id="password" name="password" {% if not editar %}required{% endif %}>
+    </div>
+    {% if editar %}
+    <div class="form-group">
+      <label>
+        <input type="checkbox" name="activo" {% if usuario and usuario['activo'] %}checked{% endif %}> Usuario activo
+      </label>
+    </div>
+    {% endif %}
+    <div class="actions">
+      <button type="submit" class="btn btn-primary">Guardar</button>
+      <a href="{{ url_for('usuarios_list') }}" class="btn btn-secondary">Cancelar</a>
+    </div>
+  </form>
+</div>
+{% endblock %}
