@@ -18,11 +18,7 @@
         <td>{{ u['username'] }}</td>
         <td>{{ u['nombre'] }}</td>
         <td>
-          {% if u['rol'] == 'admin' %}
-            <span class="badge admin">Administrador</span>
-          {% else %}
-            <span class="badge {{ u['rol'] }}">{{ AREAS[u['rol']] }}</span>
-          {% endif %}
+          <span class="badge {{ u['rol'] }}">{{ ROLE_LABELS.get(u['rol'], u['rol']) }}</span>
         </td>
         <td>{{ 'Activo' if u['activo'] else 'Inactivo' }}</td>
         <td>
