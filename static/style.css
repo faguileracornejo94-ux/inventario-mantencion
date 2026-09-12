@@ -79,6 +79,19 @@ a:hover { text-decoration: underline; }
   margin: 6px 0 18px;
 }
 
+.page-subtitle {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  margin: -8px 0 12px;
+}
+
+.hint {
+  font-size: 0.82rem;
+  color: var(--text-muted);
+  margin: 0 0 12px;
+}
+
 .card {
   background: var(--card);
   border: 1px solid var(--border);
@@ -91,6 +104,7 @@ a:hover { text-decoration: underline; }
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
   gap: 14px;
+  margin-bottom: 20px;
 }
 
 .menu-card {
@@ -160,6 +174,9 @@ tr.low-stock td { background: #fdf3e7; }
 .badge.pyp { background: #e3edfb; color: var(--accent-dark); }
 .badge.mejoras { background: #e9f8ee; color: var(--success); }
 .badge.admin { background: #f4e9fb; color: #7a3fa3; }
+.badge.planificador { background: #f4e9fb; color: #7a3fa3; }
+.badge.preparador_kit { background: #e3edfb; color: var(--accent-dark); }
+.badge.electromecanico { background: #e9f8ee; color: var(--success); }
 .badge.ingreso { background: #e9f8ee; color: var(--success); }
 .badge.retiro { background: #fbeaea; color: var(--danger); }
 
