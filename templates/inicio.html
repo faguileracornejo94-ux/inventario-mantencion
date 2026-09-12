@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% block title %}Inicio — Inventario Bodega{% endblock %}
+{% block content %}
+<div class="page-title">Hola, {{ session_nombre }}</div>
+
+<div class="grid-menu">
+  <a class="menu-card" href="{{ url_for('componentes_list') }}">
+    <div class="icon">📋</div>
+    <div class="title">Ver Componentes</div>
+    <div class="desc">Listado completo con filtros y búsqueda.</div>
+  </a>
+  <a class="menu-card" href="{{ url_for('ingreso') }}">
+    <div class="icon">⬇️</div>
+    <div class="title">Ingreso</div>
+    <div class="desc">Registrar entrada de stock.</div>
+  </a>
+  <a class="menu-card" href="{{ url_for('retiro') }}">
+    <div class="icon">⬆️</div>
+    <div class="title">Retiro</div>
+    <div class="desc">Registrar salida de stock.</div>
+  </a>
+  <a class="menu-card" href="{{ url_for('buscar') }}">
+    <div class="icon">🔎</div>
+    <div class="title">Buscar Componente</div>
+    <div class="desc">Búsqueda rápida por código o nombre.</div>
+  </a>
+  <a class="menu-card" href="{{ url_for('dashboard') }}">
+    <div class="icon">📊</div>
+    <div class="title">Dashboard</div>
+    <div class="desc">Resumen de stock y movimientos.</div>
+  </a>
+  {% if session_rol == 'admin' %}
+  <a class="menu-card" href="{{ url_for('usuarios_list') }}">
+    <div class="icon">👥</div>
+    <div class="title">Usuarios</div>
+    <div class="desc">Gestionar accesos por área.</div>
+  </a>
+  {% endif %}
+</div>
+{% endblock %}
