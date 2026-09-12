@@ -1,0 +1,84 @@
+{% extends "base.html" %}
+{% block title %}Ingreso — Inventario Bodega{% endblock %}
+{% block content %}
+<div class="page-title">Ingreso de stock</div>
+
+<div class="card" style="max-width:560px;">
+  <form method="post" id="form-ingreso">
+    <div class="form-group">
+      <label>
+        <input type="radio" name="modo" value="existente" checked onclick="toggleModo()"> Ingreso a componente existente
+      </label><br>
+      <label>
+        <input type="radio" name="modo" value="nuevo" onclick="toggleModo()"> Crear componente nuevo
+      </label>
+    </div>
+
+    <div id="bloque-existente">
+      <div class="form-group">
+        <label for="componente_id">Componente</label>
+        <select id="componente_id" name="componente_id">
+          <option value="">Selecciona un componente</option>
+          {% for c in componentes %}
+            <option value="{{ c['id'] }}">
+              {{ c['codigo'] }} — {{ c['nombre'] }}{% if session_rol == 'admin' %} ({{ AREAS[c['area']] }}){% endif %} (stock: {{ c['cantidad'] }})
+            </option>
+          {% endfor %}
+        </select>
+      </div>
+    </div>
+
+    <div id="bloque-nuevo" style="display:none;">
+      <div class="form-row">
+        <div class="form-group">
+          <label for="codigo">Código</label>
+          <input type="text" id="codigo" name="codigo">
+        </div>
+        <div class="form-group">
+          <label for="nombre">Nombre</label>
+          <input type="text" id="nombre" name="nombre">
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label for="categoria">Categoría</label>
+          <input type="text" id="categoria" name="categoria">
+        </div>
+        <div class="form-group">
+          <label for="ubicacion">Ubicación</label>
+          <input type="text" id="ubicacion" name="ubicacion">
+        </div>
+      </div>
+      {% if session_rol == 'admin' %}
+      <div class="form-group">
+        <label for="area">Área</label>
+        <select id="area" name="area">
+          <option value="">Selecciona un área</option>
+          {% for code, label in AREAS.items() %}
+            <option value="{{ code }}">{{ label }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      {% endif %}
+    </div>
+
+    <div class="form-group">
+      <label for="cantidad">Cantidad a ingresar</label>
+      <input type="number" id="cantidad" name="cantidad" min="1" required style="max-width:160px;">
+    </div>
+
+    <div class="actions">
+      <button type="submit" class="btn btn-primary">Registrar ingreso</button>
+      <a href="{{ url_for('inicio') }}" class="btn btn-secondary">Cancelar</a>
+    </div>
+  </form>
+</div>
+
+<script>
+function toggleModo() {
+  var modo = document.querySelector('input[name="modo"]:checked').value;
+  document.getElementById('bloque-existente').style.display = modo === 'existente' ? 'block' : 'none';
+  document.getElementById('bloque-nuevo').style.display = modo === 'nuevo' ? 'block' : 'none';
+}
+</script>
+{% endblock %}
