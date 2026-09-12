@@ -7,7 +7,7 @@
   <form method="post">
     <div class="form-row">
       <div class="form-group">
-        <label for="codigo">Código</label>
+        <label for="codigo">Código SAP</label>
         <input type="text" id="codigo" name="codigo" value="{{ componente['codigo'] if componente else '' }}"
                {% if editar %}disabled{% else %}required{% endif %}>
       </div>
@@ -33,7 +33,7 @@
       </div>
     </div>
 
-    {% if not editar and session_rol == 'admin' %}
+    {% if not editar and session_multi_area %}
     <div class="form-group">
       <label for="area">Área</label>
       <select id="area" name="area" required>
