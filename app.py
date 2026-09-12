@@ -1,13 +1,18 @@
+import io
 import os
 import sqlite3
-from datetime import datetime
+from datetime import datetime, timedelta
 from functools import wraps
 
 from flask import (
     Flask, request, session, redirect, url_for, render_template,
-    flash, g, abort
+    flash, g, abort, send_file
 )
 from werkzeug.security import generate_password_hash, check_password_hash
+
+from openpyxl import Workbook
+from openpyxl.styles import Font, PatternFill, Alignment
+from openpyxl.utils import get_column_letter
 
 APP_SECRET_KEY = os.environ.get("APP_SECRET_KEY", "dev-secret-change-me")
 ADMIN_USER = os.environ.get("ADMIN_USER", "admin")
@@ -21,6 +26,31 @@ AREAS = {
     "pyp": "Mantenimiento PyP",
     "mejoras": "Mantenimiento Mejoras",
 }
+
+# Qué área(s) puede operar cada rol. Un rol con más de un área se comporta
+# como "multi-área": ve/filtra entre ambas en vez de estar fijo a una.
+ROLE_AREAS = {
+    "admin": ["pyp", "mejoras"],
+    "planificador": ["pyp", "mejoras"],
+    "preparador_kit": ["pyp"],
+    "electromecanico": ["mejoras"],
+}
+
+ROLE_LABELS = {
+    "admin": "Administrador",
+    "planificador": "Planificador",
+    "preparador_kit": "Preparador de Kit",
+    "electromecanico": "Electromecánico",
+}
+
+ROLES_VALIDOS = tuple(ROLE_AREAS.keys())
+
+# Códigos de persona / turno 7x7 que ingresan stock. Lista preliminar,
+# ampliable sin tocar la base de datos (es solo texto libre validado aquí).
+TURNOS = ["38", "44"]
+
+# Umbrales para clasificar el stock de un componente frente a su mínimo.
+UMBRAL_PUNTO_PEDIDO = 1.5  # <= 1.5x el mínimo => "a punto de estar crítico"
 
 
 # ---------------------------------------------------------------------------
@@ -51,7 +81,7 @@ def init_db():
             username TEXT UNIQUE NOT NULL,
             password_hash TEXT NOT NULL,
             nombre TEXT NOT NULL,
-            rol TEXT NOT NULL CHECK (rol IN ('admin', 'pyp', 'mejoras')),
+            rol TEXT NOT NULL CHECK (rol IN ('admin', 'planificador', 'preparador_kit', 'electromecanico')),
             activo INTEGER NOT NULL DEFAULT 1
         );
 
@@ -76,6 +106,7 @@ def init_db():
             tipo TEXT NOT NULL CHECK (tipo IN ('ingreso', 'retiro')),
             cantidad INTEGER NOT NULL,
             usuario TEXT NOT NULL,
+            turno TEXT,
             fecha TEXT NOT NULL,
             FOREIGN KEY (componente_id) REFERENCES componentes(id)
         );
@@ -116,26 +147,42 @@ def admin_required(view):
     return wrapped
 
 
+def areas_del_usuario():
+    """Lista de áreas que puede tocar el rol actual (vacía si el rol no existe)."""
+    return ROLE_AREAS.get(session.get("rol"), [])
+
+
 def current_user_area():
-    """None => admin (ve todas las áreas). 'pyp' o 'mejoras' => restringido."""
-    rol = session.get("rol")
-    return None if rol == "admin" else rol
+    """None => rol multi-área (ve/filtra entre ambas). 'pyp' o 'mejoras' => restringido a esa única área."""
+    areas = areas_del_usuario()
+    return areas[0] if len(areas) == 1 else None
 
 
 def area_permitida(area):
     """¿El usuario actual puede operar sobre esta área?"""
-    u_area = current_user_area()
-    return u_area is None or u_area == area
+    return area in areas_del_usuario()
 
 
 @app.context_processor
 def inject_globals():
+    areas = areas_del_usuario()
+    multi_area = len(areas) > 1
+    if multi_area:
+        area_nombre = "Todas las áreas"
+    elif areas:
+        area_nombre = AREAS.get(areas[0], "")
+    else:
+        area_nombre = ""
     return {
         "AREAS": AREAS,
+        "ROLE_LABELS": ROLE_LABELS,
+        "ROLE_AREAS": ROLE_AREAS,
+        "TURNOS": TURNOS,
         "session_nombre": session.get("nombre"),
         "session_rol": session.get("rol"),
         "session_user_id": session.get("user_id"),
-        "session_area_nombre": AREAS.get(session.get("rol"), "Todas las áreas") if session.get("rol") != "admin" else "Todas las áreas",
+        "session_area_nombre": area_nombre,
+        "session_multi_area": multi_area,
     }
 
 
@@ -190,9 +237,10 @@ def inicio():
 def dashboard():
     db = get_db()
     u_area = current_user_area()
+    filtro_area = request.args.get("area") if u_area is None else u_area
 
-    where = "" if u_area is None else "WHERE area = ?"
-    params = () if u_area is None else (u_area,)
+    where = "" if not filtro_area else "WHERE area = ?"
+    params = () if not filtro_area else (filtro_area,)
 
     total_componentes = db.execute(
         f"SELECT COUNT(*) FROM componentes {where}", params
@@ -206,14 +254,14 @@ def dashboard():
     ).fetchone()[0]
 
     hoy = datetime.now().strftime("%Y-%m-%d")
-    mov_where = "WHERE fecha LIKE ?" if u_area is None else "WHERE fecha LIKE ? AND area = ?"
-    mov_params = (f"{hoy}%",) if u_area is None else (f"{hoy}%", u_area)
+    mov_where = "WHERE fecha LIKE ?" if not filtro_area else "WHERE fecha LIKE ? AND area = ?"
+    mov_params = (f"{hoy}%",) if not filtro_area else (f"{hoy}%", filtro_area)
     movimientos_hoy = db.execute(
         f"SELECT COUNT(*) FROM movimientos {mov_where}", mov_params
     ).fetchone()[0]
 
-    ultimos_where = "" if u_area is None else "WHERE area = ?"
-    ultimos_params = () if u_area is None else (u_area,)
+    ultimos_where = "" if not filtro_area else "WHERE area = ?"
+    ultimos_params = () if not filtro_area else (filtro_area,)
     ultimos_movimientos = db.execute(
         f"SELECT * FROM movimientos {ultimos_where} ORDER BY id DESC LIMIT 10",
         ultimos_params,
@@ -233,6 +281,7 @@ def dashboard():
         movimientos_hoy=movimientos_hoy,
         ultimos_movimientos=ultimos_movimientos,
         bajo_stock=bajo_stock,
+        filtro_area=filtro_area,
     )
 
 
@@ -253,6 +302,9 @@ def componentes_list():
     if filtro_area in AREAS:
         sql += " AND area = ?"
         params.append(filtro_area)
+    elif u_area is not None:
+        sql += " AND area = ?"
+        params.append(u_area)
     if q:
         sql += " AND (codigo LIKE ? OR nombre LIKE ? OR categoria LIKE ? OR ubicacion LIKE ?)"
         like = f"%{q}%"
@@ -283,7 +335,7 @@ def componente_nuevo():
         stock_minimo = request.form.get("stock_minimo", "0")
 
         if not codigo or not nombre or area not in AREAS:
-            flash("Código, nombre y área son obligatorios.", "error")
+            flash("Código SAP, nombre y área son obligatorios.", "error")
             return render_template("componente_form.html", componente=request.form)
         if not area_permitida(area):
             abort(403)
@@ -298,7 +350,7 @@ def componente_nuevo():
             )
             db.commit()
         except sqlite3.IntegrityError:
-            flash(f'Ya existe un componente con el código "{codigo}".', "error")
+            flash(f'Ya existe un componente con el código SAP "{codigo}".', "error")
             return render_template("componente_form.html", componente=request.form)
 
         flash("Componente creado correctamente.", "success")
@@ -369,6 +421,18 @@ def _componentes_disponibles(area):
     return db.execute("SELECT * FROM componentes ORDER BY area, nombre").fetchall()
 
 
+def _fecha_valida_o_hoy(valor):
+    """Valida un input type=date (YYYY-MM-DD); si falta o es inválido, usa hoy."""
+    hoy = datetime.now().strftime("%Y-%m-%d")
+    if not valor:
+        return hoy
+    try:
+        datetime.strptime(valor, "%Y-%m-%d")
+        return valor
+    except ValueError:
+        return hoy
+
+
 @app.route("/ingreso", methods=["GET", "POST"])
 @login_required
 def ingreso():
@@ -378,16 +442,26 @@ def ingreso():
     if request.method == "POST":
         modo = request.form.get("modo", "existente")
         cantidad = int(request.form.get("cantidad", "0") or 0)
+
+        turno = request.form.get("turno", "").strip()
+        if request.form.get("turno") == "otro":
+            turno = request.form.get("turno_otro", "").strip()
+        fecha_elegida = _fecha_valida_o_hoy(request.form.get("fecha", "").strip())
+
         if cantidad <= 0:
             flash("La cantidad debe ser mayor a 0.", "error")
+            return redirect(url_for("ingreso"))
+        if not turno:
+            flash("El código de turno de la persona que ingresa es obligatorio.", "error")
             return redirect(url_for("ingreso"))
 
         if modo == "nuevo":
             codigo = request.form.get("codigo", "").strip()
             nombre = request.form.get("nombre", "").strip()
             area = u_area or request.form.get("area", "")
+            stock_minimo = request.form.get("stock_minimo", "0")
             if not codigo or not nombre or area not in AREAS:
-                flash("Código, nombre y área son obligatorios para un componente nuevo.", "error")
+                flash("Código SAP, nombre y área son obligatorios para un componente nuevo.", "error")
                 return redirect(url_for("ingreso"))
             if not area_permitida(area):
                 abort(403)
@@ -396,12 +470,12 @@ def ingreso():
             try:
                 cur = db.execute(
                     "INSERT INTO componentes (codigo, nombre, categoria, ubicacion, area, "
-                    "cantidad, stock_minimo) VALUES (?, ?, ?, ?, ?, ?, 0)",
-                    (codigo, nombre, categoria, ubicacion, area, cantidad),
+                    "cantidad, stock_minimo) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                    (codigo, nombre, categoria, ubicacion, area, cantidad, int(stock_minimo or 0)),
                 )
                 componente_id = cur.lastrowid
             except sqlite3.IntegrityError:
-                flash(f'Ya existe un componente con el código "{codigo}". Usa "Ingreso a existente".', "error")
+                flash(f'Ya existe un componente con el código SAP "{codigo}". Usa "Ingreso a existente".', "error")
                 return redirect(url_for("ingreso"))
         else:
             componente_id = request.form.get("componente_id")
@@ -419,18 +493,20 @@ def ingreso():
             )
             codigo, nombre, area = componente["codigo"], componente["nombre"], componente["area"]
 
+        hora_actual = datetime.now().strftime("%H:%M:%S")
         db.execute(
             "INSERT INTO movimientos (componente_id, codigo, nombre, area, tipo, cantidad, "
-            "usuario, fecha) VALUES (?, ?, ?, ?, 'ingreso', ?, ?, ?)",
-            (componente_id, codigo, nombre, area, cantidad, session["username"],
-             datetime.now().strftime("%Y-%m-%d %H:%M:%S")),
+            "usuario, turno, fecha) VALUES (?, ?, ?, ?, 'ingreso', ?, ?, ?, ?)",
+            (componente_id, codigo, nombre, area, cantidad, session["username"], turno,
+             f"{fecha_elegida} {hora_actual}"),
         )
         db.commit()
         flash(f"Ingreso registrado: +{cantidad} de {nombre}.", "success")
         return redirect(url_for("ingreso"))
 
     componentes = _componentes_disponibles(u_area)
-    return render_template("ingreso.html", componentes=componentes)
+    hoy = datetime.now().strftime("%Y-%m-%d")
+    return render_template("ingreso.html", componentes=componentes, hoy=hoy)
 
 
 @app.route("/retiro", methods=["GET", "POST"])
@@ -501,6 +577,177 @@ def buscar():
 
 
 # ---------------------------------------------------------------------------
+# Tendencias de uso (para ajustar puntos de pedido)
+# ---------------------------------------------------------------------------
+
+@app.route("/tendencias")
+@login_required
+def tendencias():
+    db = get_db()
+    u_area = current_user_area()
+    filtro_area = request.args.get("area") if u_area is None else u_area
+
+    dias = int(request.args.get("dias", "90") or 90)
+    desde = (datetime.now() - timedelta(days=dias)).strftime("%Y-%m-%d")
+
+    area_sql = " AND m.area = ?" if filtro_area in AREAS else ""
+    area_params = (filtro_area,) if filtro_area in AREAS else ()
+
+    mas_usados = db.execute(
+        f"""
+        SELECT m.codigo, m.nombre, m.area, SUM(m.cantidad) AS total_retirado,
+               COUNT(*) AS movimientos
+        FROM movimientos m
+        WHERE m.tipo = 'retiro' AND m.fecha >= ? {area_sql}
+        GROUP BY m.componente_id, m.codigo, m.nombre, m.area
+        ORDER BY total_retirado DESC
+        LIMIT 15
+        """,
+        (desde, *area_params),
+    ).fetchall()
+
+    comp_sql = "SELECT * FROM componentes WHERE 1=1"
+    comp_params = []
+    if filtro_area in AREAS:
+        comp_sql += " AND area = ?"
+        comp_params.append(filtro_area)
+
+    componentes = db.execute(comp_sql, comp_params).fetchall()
+
+    usados_ids = set()
+    uso_por_componente = {}
+    for row in db.execute(
+        f"""
+        SELECT componente_id, SUM(cantidad) AS total
+        FROM movimientos m
+        WHERE tipo = 'retiro' AND fecha >= ? {area_sql}
+        GROUP BY componente_id
+        """,
+        (desde, *area_params),
+    ).fetchall():
+        if row["componente_id"] is not None:
+            usados_ids.add(row["componente_id"])
+            uso_por_componente[row["componente_id"]] = row["total"]
+
+    sin_movimiento = [c for c in componentes if c["id"] not in usados_ids]
+
+    sugerencias = []
+    semanas = max(dias / 7.0, 1)
+    for c in componentes:
+        total = uso_por_componente.get(c["id"], 0)
+        promedio_semanal = total / semanas
+        if total > 0 and promedio_semanal * 2 > c["stock_minimo"]:
+            sugerencias.append({
+                "componente": c,
+                "promedio_semanal": round(promedio_semanal, 1),
+                "tipo": "subir",
+            })
+        elif total == 0 and c["stock_minimo"] > 0:
+            sugerencias.append({
+                "componente": c,
+                "promedio_semanal": 0,
+                "tipo": "revisar",
+            })
+
+    return render_template(
+        "tendencias.html",
+        dias=dias,
+        filtro_area=filtro_area,
+        mas_usados=mas_usados,
+        sin_movimiento=sin_movimiento[:20],
+        sugerencias=sugerencias[:20],
+    )
+
+
+# ---------------------------------------------------------------------------
+# Informe de stock en Excel
+# ---------------------------------------------------------------------------
+
+def _clasificar_stock(cantidad, stock_minimo):
+    if cantidad <= 0:
+        return "Crítico"
+    if cantidad <= stock_minimo:
+        return "Bajo stock"
+    if stock_minimo > 0 and cantidad <= stock_minimo * UMBRAL_PUNTO_PEDIDO:
+        return "A punto de estar crítico"
+    return "Disponible"
+
+
+@app.route("/reporte/stock.xlsx")
+@login_required
+def reporte_stock_excel():
+    db = get_db()
+    u_area = current_user_area()
+    filtro_area = request.args.get("area") if u_area is None else u_area
+
+    sql = "SELECT * FROM componentes WHERE 1=1"
+    params = []
+    if filtro_area in AREAS:
+        sql += " AND area = ?"
+        params.append(filtro_area)
+    sql += " ORDER BY area, nombre"
+    componentes = db.execute(sql, params).fetchall()
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Stock"
+
+    headers = ["Código SAP", "Nombre", "Categoría", "Ubicación", "Área",
+               "Cantidad", "Stock mínimo", "Estado"]
+    ws.append(headers)
+    header_fill = PatternFill(start_color="0F2540", end_color="0F2540", fill_type="solid")
+    for col_idx, _ in enumerate(headers, start=1):
+        cell = ws.cell(row=1, column=col_idx)
+        cell.font = Font(color="FFFFFF", bold=True)
+        cell.fill = header_fill
+        cell.alignment = Alignment(horizontal="center")
+
+    estado_fill = {
+        "Crítico": PatternFill(start_color="F8D0CB", end_color="F8D0CB", fill_type="solid"),
+        "Bajo stock": PatternFill(start_color="FCE8CC", end_color="FCE8CC", fill_type="solid"),
+        "A punto de estar crítico": PatternFill(start_color="FCF3CF", end_color="FCF3CF", fill_type="solid"),
+        "Disponible": PatternFill(start_color="D9F2E3", end_color="D9F2E3", fill_type="solid"),
+    }
+
+    resumen = {"Crítico": 0, "Bajo stock": 0, "A punto de estar crítico": 0, "Disponible": 0}
+    for c in componentes:
+        estado = _clasificar_stock(c["cantidad"], c["stock_minimo"])
+        resumen[estado] += 1
+        row = [
+            c["codigo"], c["nombre"], c["categoria"] or "", c["ubicacion"] or "",
+            AREAS.get(c["area"], c["area"]), c["cantidad"], c["stock_minimo"], estado,
+        ]
+        ws.append(row)
+        estado_cell = ws.cell(row=ws.max_row, column=8)
+        estado_cell.fill = estado_fill.get(estado)
+
+    for col_idx, header in enumerate(headers, start=1):
+        width = max(len(header) + 4, 14)
+        ws.column_dimensions[get_column_letter(col_idx)].width = width
+
+    resumen_ws = wb.create_sheet("Resumen")
+    resumen_ws.append(["Generado", datetime.now().strftime("%Y-%m-%d %H:%M")])
+    resumen_ws.append([])
+    resumen_ws.append(["Estado", "Cantidad de componentes"])
+    for estado, cantidad in resumen.items():
+        resumen_ws.append([estado, cantidad])
+    resumen_ws.column_dimensions["A"].width = 26
+    resumen_ws.column_dimensions["B"].width = 22
+
+    buffer = io.BytesIO()
+    wb.save(buffer)
+    buffer.seek(0)
+
+    nombre_archivo = f"informe_stock_{datetime.now().strftime('%Y-%m-%d')}.xlsx"
+    return send_file(
+        buffer,
+        as_attachment=True,
+        download_name=nombre_archivo,
+        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
+
+
+# ---------------------------------------------------------------------------
 # Administración de usuarios (solo admin)
 # ---------------------------------------------------------------------------
 
@@ -523,7 +770,7 @@ def usuario_nuevo():
         rol = request.form.get("rol", "")
         password = request.form.get("password", "")
 
-        if not username or not nombre or rol not in ("admin", "pyp", "mejoras") or not password:
+        if not username or not nombre or rol not in ROLES_VALIDOS or not password:
             flash("Todos los campos son obligatorios.", "error")
             return render_template("usuario_form.html", usuario=request.form)
 
@@ -559,7 +806,7 @@ def usuario_editar(user_id):
         password = request.form.get("password", "").strip()
         activo = 1 if request.form.get("activo") == "on" else 0
 
-        if not nombre or rol not in ("admin", "pyp", "mejoras"):
+        if not nombre or rol not in ROLES_VALIDOS:
             flash("Nombre y rol son obligatorios.", "error")
             return render_template("usuario_form.html", usuario=usuario, editar=True)
 
