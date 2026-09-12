@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+{% block title %}Componentes — Inventario Bodega{% endblock %}
+{% block content %}
+<div class="page-title">Componentes</div>
+
+<form method="get" class="actions">
+  <input type="text" name="q" value="{{ q }}" placeholder="Buscar por código, nombre, categoría o ubicación..." style="max-width:320px;">
+  {% if session_rol == 'admin' %}
+  <select name="area">
+    <option value="" {% if not filtro_area %}selected{% endif %}>Todas las áreas</option>
+    {% for code, label in AREAS.items() %}
+      <option value="{{ code }}" {% if filtro_area == code %}selected{% endif %}>{{ label }}</option>
+    {% endfor %}
+  </select>
+  {% endif %}
+  <button type="submit" class="btn btn-secondary">Filtrar</button>
+  <a href="{{ url_for('componente_nuevo') }}" class="btn btn-primary">+ Nuevo componente</a>
+</form>
+
+{% if componentes %}
+<div class="card table-wrap">
+  <table>
+    <thead>
+      <tr>
+        <th>Código</th>
+        <th>Nombre</th>
+        <th>Categoría</th>
+        <th>Ubicación</th>
+        {% if session_rol == 'admin' %}<th>Área</th>{% endif %}
+        <th>Stock</th>
+        <th>Mínimo</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for c in componentes %}
+      <tr {% if c['cantidad'] <= c['stock_minimo'] %}class="low-stock"{% endif %}>
+        <td>{{ c['codigo'] }}</td>
+        <td>{{ c['nombre'] }}</td>
+        <td>{{ c['categoria'] or '—' }}</td>
+        <td>{{ c['ubicacion'] or '—' }}</td>
+        {% if session_rol == 'admin' %}
+        <td><span class="badge {{ c['area'] }}">{{ AREAS[c['area']] }}</span></td>
+        {% endif %}
+        <td>{{ c['cantidad'] }}</td>
+        <td>{{ c['stock_minimo'] }}</td>
+        <td>
+          <a class="btn btn-secondary btn-sm" href="{{ url_for('componente_editar', comp_id=c['id']) }}">Editar</a>
+          <form class="inline" method="post" action="{{ url_for('componente_eliminar', comp_id=c['id']) }}"
+                onsubmit="return confirm('¿Eliminar este componente? Esta acción no se puede deshacer.');">
+            <button type="submit" class="btn btn-danger btn-sm">Eliminar</button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
+<div class="card empty-state">No se encontraron componentes.</div>
+{% endif %}
+{% endblock %}
