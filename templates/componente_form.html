@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+{% block title %}{{ 'Editar' if editar else 'Nuevo' }} componente{% endblock %}
+{% block content %}
+<div class="page-title">{{ 'Editar componente' if editar else 'Nuevo componente' }}</div>
+
+<div class="card" style="max-width:560px;">
+  <form method="post">
+    <div class="form-row">
+      <div class="form-group">
+        <label for="codigo">Código</label>
+        <input type="text" id="codigo" name="codigo" value="{{ componente['codigo'] if componente else '' }}"
+               {% if editar %}disabled{% else %}required{% endif %}>
+      </div>
+      <div class="form-group">
+        <label for="nombre">Nombre</label>
+        <input type="text" id="nombre" name="nombre" value="{{ componente['nombre'] if componente else '' }}" required>
+      </div>
+    </div>
+
+    <div class="form-group">
+      <label for="descripcion">Descripción</label>
+      <textarea id="descripcion" name="descripcion" rows="2">{{ componente['descripcion'] if componente else '' }}</textarea>
+    </div>
+
+    <div class="form-row">
+      <div class="form-group">
+        <label for="categoria">Categoría</label>
+        <input type="text" id="categoria" name="categoria" value="{{ componente['categoria'] if componente else '' }}" placeholder="Ej: tornillería, cableado, sensores">
+      </div>
+      <div class="form-group">
+        <label for="ubicacion">Ubicación en bodega</label>
+        <input type="text" id="ubicacion" name="ubicacion" value="{{ componente['ubicacion'] if componente else '' }}" placeholder="Ej: Estante 3B">
+      </div>
+    </div>
+
+    {% if not editar and session_rol == 'admin' %}
+    <div class="form-group">
+      <label for="area">Área</label>
+      <select id="area" name="area" required>
+        <option value="">Selecciona un área</option>
+        {% for code, label in AREAS.items() %}
+          <option value="{{ code }}">{{ label }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    {% endif %}
+
+    <div class="form-row">
+      {% if not editar %}
+      <div class="form-group">
+        <label for="cantidad">Cantidad inicial</label>
+        <input type="number" id="cantidad" name="cantidad" min="0" value="{{ componente['cantidad'] if componente else 0 }}">
+      </div>
+      {% endif %}
+      <div class="form-group">
+        <label for="stock_minimo">Stock mínimo</label>
+        <input type="number" id="stock_minimo" name="stock_minimo" min="0" value="{{ componente['stock_minimo'] if componente else 0 }}">
+      </div>
+    </div>
+
+    <div class="actions">
+      <button type="submit" class="btn btn-primary">Guardar</button>
+      <a href="{{ url_for('componentes_list') }}" class="btn btn-secondary">Cancelar</a>
+    </div>
+  </form>
+</div>
+{% endblock %}
