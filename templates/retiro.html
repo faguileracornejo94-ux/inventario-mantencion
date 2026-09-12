@@ -12,7 +12,7 @@
         <option value="">Selecciona un componente</option>
         {% for c in componentes %}
           <option value="{{ c['id'] }}">
-            {{ c['codigo'] }} — {{ c['nombre'] }}{% if session_rol == 'admin' %} ({{ AREAS[c['area']] }}){% endif %} (disponible: {{ c['cantidad'] }})
+            {{ c['codigo'] }} — {{ c['nombre'] }}{% if session_multi_area %} ({{ AREAS[c['area']] }}){% endif %} (disponible: {{ c['cantidad'] }})
           </option>
         {% endfor %}
       </select>
