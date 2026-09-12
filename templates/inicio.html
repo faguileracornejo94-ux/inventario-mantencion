@@ -3,6 +3,22 @@
 {% block content %}
 <div class="page-title">Hola, {{ session_nombre }}</div>
 
+{% if session_multi_area %}
+<div class="page-subtitle">Elige un área para trabajar:</div>
+<div class="grid-menu">
+  <a class="menu-card" href="{{ url_for('componentes_list', area='pyp') }}">
+    <div class="icon">🛠️</div>
+    <div class="title">Mantención PYP</div>
+    <div class="desc">Componentes y stock del área Mantenimiento PyP.</div>
+  </a>
+  <a class="menu-card" href="{{ url_for('componentes_list', area='mejoras') }}">
+    <div class="icon">🔧</div>
+    <div class="title">Mantención Mejoras</div>
+    <div class="desc">Componentes y stock del área Mantenimiento Mejoras.</div>
+  </a>
+</div>
+{% endif %}
+
 <div class="grid-menu">
   <a class="menu-card" href="{{ url_for('componentes_list') }}">
     <div class="icon">📋</div>
@@ -28,6 +44,16 @@
     <div class="icon">📊</div>
     <div class="title">Dashboard</div>
     <div class="desc">Resumen de stock y movimientos.</div>
+  </a>
+  <a class="menu-card" href="{{ url_for('tendencias') }}">
+    <div class="icon">📈</div>
+    <div class="title">Tendencias de uso</div>
+    <div class="desc">Componentes más/menos usados y sugerencias de stock mínimo.</div>
+  </a>
+  <a class="menu-card" href="{{ url_for('reporte_stock_excel') }}">
+    <div class="icon">📥</div>
+    <div class="title">Informe de stock (Excel)</div>
+    <div class="desc">Descarga el estado de stock: crítico, bajo, por vencer o disponible.</div>
   </a>
   {% if session_rol == 'admin' %}
   <a class="menu-card" href="{{ url_for('usuarios_list') }}">
