@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}Inventario Bodega{% endblock %}</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+  {% if session.get('user_id') %}
+  <div class="topbar">
+    <div class="brand">
+      <span>📦</span>
+      <span>Inventario Bodega</span>
+      <span class="area-pill">{{ session_area_nombre }}</span>
+    </div>
+    <nav>
+      <a href="{{ url_for('inicio') }}">Inicio</a>
+      {% if session_rol == 'admin' %}
+        <a href="{{ url_for('usuarios_list') }}">Usuarios</a>
+      {% endif %}
+      <span>{{ session_nombre }}</span>
+      <a href="{{ url_for('logout') }}">Salir</a>
+    </nav>
+  </div>
+  {% endif %}
+
+  {% if session.get('user_id') %}
+  <div class="container">
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        {% for category, message in messages %}
+          <div class="flash {{ category }}">{{ message }}</div>
+        {% endfor %}
+      {% endif %}
+    {% endwith %}
+
+    {% block content %}{% endblock %}
+
+    <div class="footer-note">Inventario Bodega — Versión 1.0 — {{ session_nombre }}</div>
+  </div>
+  {% else %}
+    {% block content_public %}{{ self.content() }}{% endblock %}
+  {% endif %}
+</body>
+</html>
