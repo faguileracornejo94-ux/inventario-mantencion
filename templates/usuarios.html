@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% block title %}Usuarios — Inventario Bodega{% endblock %}
+{% block content %}
+<div class="page-title">Usuarios</div>
+
+<div class="actions">
+  <a href="{{ url_for('usuario_nuevo') }}" class="btn btn-primary">+ Nuevo usuario</a>
+</div>
+
+<div class="card table-wrap">
+  <table>
+    <thead>
+      <tr><th>Usuario</th><th>Nombre</th><th>Rol / Área</th><th>Estado</th><th></th></tr>
+    </thead>
+    <tbody>
+      {% for u in usuarios %}
+      <tr>
+        <td>{{ u['username'] }}</td>
+        <td>{{ u['nombre'] }}</td>
+        <td>
+          {% if u['rol'] == 'admin' %}
+            <span class="badge admin">Administrador</span>
+          {% else %}
+            <span class="badge {{ u['rol'] }}">{{ AREAS[u['rol']] }}</span>
+          {% endif %}
+        </td>
+        <td>{{ 'Activo' if u['activo'] else 'Inactivo' }}</td>
+        <td>
+          <a class="btn btn-secondary btn-sm" href="{{ url_for('usuario_editar', user_id=u['id']) }}">Editar</a>
+          {% if u['id'] != session_user_id %}
+          <form class="inline" method="post" action="{{ url_for('usuario_eliminar', user_id=u['id']) }}"
+                onsubmit="return confirm('¿Eliminar este usuario?');">
+            <button type="submit" class="btn btn-danger btn-sm">Eliminar</button>
+          </form>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}
