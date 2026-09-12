@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% block title %}Retiro — Inventario Bodega{% endblock %}
+{% block content %}
+<div class="page-title">Retiro de stock</div>
+
+<div class="card" style="max-width:560px;">
+  {% if componentes %}
+  <form method="post">
+    <div class="form-group">
+      <label for="componente_id">Componente</label>
+      <select id="componente_id" name="componente_id" required>
+        <option value="">Selecciona un componente</option>
+        {% for c in componentes %}
+          <option value="{{ c['id'] }}">
+            {{ c['codigo'] }} — {{ c['nombre'] }}{% if session_rol == 'admin' %} ({{ AREAS[c['area']] }}){% endif %} (disponible: {{ c['cantidad'] }})
+          </option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="form-group">
+      <label for="cantidad">Cantidad a retirar</label>
+      <input type="number" id="cantidad" name="cantidad" min="1" required style="max-width:160px;">
+    </div>
+    <div class="actions">
+      <button type="submit" class="btn btn-primary">Registrar retiro</button>
+      <a href="{{ url_for('inicio') }}" class="btn btn-secondary">Cancelar</a>
+    </div>
+  </form>
+  {% else %}
+  <div class="empty-state">No hay componentes con stock disponible para retirar.</div>
+  {% endif %}
+</div>
+{% endblock %}
