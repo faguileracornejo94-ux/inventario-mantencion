@@ -14,8 +14,8 @@
     <table>
       <thead>
         <tr>
-          <th>Código</th><th>Nombre</th><th>Categoría</th><th>Ubicación</th>
-          {% if session_rol == 'admin' %}<th>Área</th>{% endif %}
+          <th>Código SAP</th><th>Nombre</th><th>Categoría</th><th>Ubicación</th>
+          {% if session_multi_area %}<th>Área</th>{% endif %}
           <th>Stock</th>
         </tr>
       </thead>
@@ -26,7 +26,7 @@
           <td><a href="{{ url_for('componente_editar', comp_id=c['id']) }}">{{ c['nombre'] }}</a></td>
           <td>{{ c['categoria'] or '—' }}</td>
           <td>{{ c['ubicacion'] or '—' }}</td>
-          {% if session_rol == 'admin' %}<td><span class="badge {{ c['area'] }}">{{ AREAS[c['area']] }}</span></td>{% endif %}
+          {% if session_multi_area %}<td><span class="badge {{ c['area'] }}">{{ AREAS[c['area']] }}</span></td>{% endif %}
           <td>{{ c['cantidad'] }}</td>
         </tr>
         {% endfor %}
