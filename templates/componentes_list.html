@@ -5,7 +5,7 @@
 
 <form method="get" class="actions">
   <input type="text" name="q" value="{{ q }}" placeholder="Buscar por código, nombre, categoría o ubicación..." style="max-width:320px;">
-  {% if session_rol == 'admin' %}
+  {% if session_multi_area %}
   <select name="area">
     <option value="" {% if not filtro_area %}selected{% endif %}>Todas las áreas</option>
     {% for code, label in AREAS.items() %}
@@ -22,11 +22,11 @@
   <table>
     <thead>
       <tr>
-        <th>Código</th>
+        <th>Código SAP</th>
         <th>Nombre</th>
         <th>Categoría</th>
         <th>Ubicación</th>
-        {% if session_rol == 'admin' %}<th>Área</th>{% endif %}
+        {% if session_multi_area %}<th>Área</th>{% endif %}
         <th>Stock</th>
         <th>Mínimo</th>
         <th></th>
@@ -39,7 +39,7 @@
         <td>{{ c['nombre'] }}</td>
         <td>{{ c['categoria'] or '—' }}</td>
         <td>{{ c['ubicacion'] or '—' }}</td>
-        {% if session_rol == 'admin' %}
+        {% if session_multi_area %}
         <td><span class="badge {{ c['area'] }}">{{ AREAS[c['area']] }}</span></td>
         {% endif %}
         <td>{{ c['cantidad'] }}</td>
