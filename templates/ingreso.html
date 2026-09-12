@@ -5,6 +5,27 @@
 
 <div class="card" style="max-width:560px;">
   <form method="post" id="form-ingreso">
+    <div class="form-row">
+      <div class="form-group">
+        <label for="turno">Código de persona / turno</label>
+        <select id="turno" name="turno" onchange="toggleTurnoOtro()" required>
+          <option value="">Selecciona</option>
+          {% for t in TURNOS %}
+            <option value="{{ t }}">{{ t }}</option>
+          {% endfor %}
+          <option value="otro">Otro…</option>
+        </select>
+      </div>
+      <div class="form-group" id="bloque-turno-otro" style="display:none;">
+        <label for="turno_otro">Especifica el código</label>
+        <input type="text" id="turno_otro" name="turno_otro">
+      </div>
+      <div class="form-group">
+        <label for="fecha">Fecha de ingreso</label>
+        <input type="date" id="fecha" name="fecha" value="{{ hoy }}" required>
+      </div>
+    </div>
+
     <div class="form-group">
       <label>
         <input type="radio" name="modo" value="existente" checked onclick="toggleModo()"> Ingreso a componente existente
@@ -21,7 +42,7 @@
           <option value="">Selecciona un componente</option>
           {% for c in componentes %}
             <option value="{{ c['id'] }}">
-              {{ c['codigo'] }} — {{ c['nombre'] }}{% if session_rol == 'admin' %} ({{ AREAS[c['area']] }}){% endif %} (stock: {{ c['cantidad'] }})
+              {{ c['codigo'] }} — {{ c['nombre'] }}{% if session_multi_area %} ({{ AREAS[c['area']] }}){% endif %} (stock: {{ c['cantidad'] }})
             </option>
           {% endfor %}
         </select>
@@ -29,13 +50,15 @@
     </div>
 
     <div id="bloque-nuevo" style="display:none;">
+      <p class="hint">Alta rápida de un componente nuevo. Para más campos (descripción, etc.) usa
+        <a href="{{ url_for('componente_nuevo') }}">el formulario completo de componentes</a>.</p>
       <div class="form-row">
         <div class="form-group">
-          <label for="codigo">Código</label>
+          <label for="codigo">Código SAP</label>
           <input type="text" id="codigo" name="codigo">
         </div>
         <div class="form-group">
-          <label for="nombre">Nombre</label>
+          <label for="nombre">Nombre de componente</label>
           <input type="text" id="nombre" name="nombre">
         </div>
       </div>
@@ -49,17 +72,23 @@
           <input type="text" id="ubicacion" name="ubicacion">
         </div>
       </div>
-      {% if session_rol == 'admin' %}
-      <div class="form-group">
-        <label for="area">Área</label>
-        <select id="area" name="area">
-          <option value="">Selecciona un área</option>
-          {% for code, label in AREAS.items() %}
-            <option value="{{ code }}">{{ label }}</option>
-          {% endfor %}
-        </select>
+      <div class="form-row">
+        <div class="form-group">
+          <label for="stock_minimo">Stock mínimo</label>
+          <input type="number" id="stock_minimo" name="stock_minimo" min="0" value="0" style="max-width:160px;">
+        </div>
+        {% if session_multi_area %}
+        <div class="form-group">
+          <label for="area">Área</label>
+          <select id="area" name="area">
+            <option value="">Selecciona un área</option>
+            {% for code, label in AREAS.items() %}
+              <option value="{{ code }}">{{ label }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        {% endif %}
       </div>
-      {% endif %}
     </div>
 
     <div class="form-group">
@@ -79,6 +108,10 @@ function toggleModo() {
   var modo = document.querySelector('input[name="modo"]:checked').value;
   document.getElementById('bloque-existente').style.display = modo === 'existente' ? 'block' : 'none';
   document.getElementById('bloque-nuevo').style.display = modo === 'nuevo' ? 'block' : 'none';
+}
+function toggleTurnoOtro() {
+  var val = document.getElementById('turno').value;
+  document.getElementById('bloque-turno-otro').style.display = val === 'otro' ? 'block' : 'none';
 }
 </script>
 {% endblock %}
