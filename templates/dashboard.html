@@ -3,6 +3,21 @@
 {% block content %}
 <div class="page-title">Dashboard</div>
 
+<div class="actions">
+  {% if session_multi_area %}
+  <form method="get" class="inline">
+    <select name="area" onchange="this.form.submit()">
+      <option value="" {% if not filtro_area %}selected{% endif %}>Todas las áreas</option>
+      {% for code, label in AREAS.items() %}
+        <option value="{{ code }}" {% if filtro_area == code %}selected{% endif %}>{{ label }}</option>
+      {% endfor %}
+    </select>
+  </form>
+  {% endif %}
+  <a href="{{ url_for('tendencias', area=filtro_area if filtro_area else None) }}" class="btn btn-secondary">Tendencias de uso</a>
+  <a href="{{ url_for('reporte_stock_excel', area=filtro_area if filtro_area else None) }}" class="btn btn-primary">Descargar informe de stock (Excel)</a>
+</div>
+
 <div class="stat-row">
   <div class="stat-tile">
     <div class="value">{{ total_componentes }}</div>
@@ -27,13 +42,13 @@
   <strong>Componentes bajo stock mínimo</strong>
   <div class="table-wrap" style="margin-top:10px;">
     <table>
-      <thead><tr><th>Código</th><th>Nombre</th>{% if session_rol == 'admin' %}<th>Área</th>{% endif %}<th>Stock</th><th>Mínimo</th></tr></thead>
+      <thead><tr><th>Código SAP</th><th>Nombre</th>{% if session_multi_area %}<th>Área</th>{% endif %}<th>Stock</th><th>Mínimo</th></tr></thead>
       <tbody>
         {% for c in bajo_stock %}
         <tr class="low-stock">
           <td>{{ c['codigo'] }}</td>
           <td>{{ c['nombre'] }}</td>
-          {% if session_rol == 'admin' %}<td><span class="badge {{ c['area'] }}">{{ AREAS[c['area']] }}</span></td>{% endif %}
+          {% if session_multi_area %}<td><span class="badge {{ c['area'] }}">{{ AREAS[c['area']] }}</span></td>{% endif %}
           <td>{{ c['cantidad'] }}</td>
           <td>{{ c['stock_minimo'] }}</td>
         </tr>
@@ -49,16 +64,17 @@
   <div class="table-wrap" style="margin-top:10px;">
     {% if ultimos_movimientos %}
     <table>
-      <thead><tr><th>Fecha</th><th>Código</th><th>Nombre</th>{% if session_rol == 'admin' %}<th>Área</th>{% endif %}<th>Tipo</th><th>Cantidad</th><th>Usuario</th></tr></thead>
+      <thead><tr><th>Fecha</th><th>Código SAP</th><th>Nombre</th>{% if session_multi_area %}<th>Área</th>{% endif %}<th>Tipo</th><th>Cantidad</th><th>Turno</th><th>Usuario</th></tr></thead>
       <tbody>
         {% for m in ultimos_movimientos %}
         <tr>
           <td>{{ m['fecha'] }}</td>
           <td>{{ m['codigo'] }}</td>
           <td>{{ m['nombre'] }}</td>
-          {% if session_rol == 'admin' %}<td><span class="badge {{ m['area'] }}">{{ AREAS[m['area']] }}</span></td>{% endif %}
+          {% if session_multi_area %}<td><span class="badge {{ m['area'] }}">{{ AREAS[m['area']] }}</span></td>{% endif %}
           <td><span class="badge {{ m['tipo'] }}">{{ 'Ingreso' if m['tipo'] == 'ingreso' else 'Retiro' }}</span></td>
           <td>{{ m['cantidad'] }}</td>
+          <td>{{ m['turno'] or '—' }}</td>
           <td>{{ m['usuario'] }}</td>
         </tr>
         {% endfor %}
