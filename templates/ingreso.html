@@ -42,7 +42,7 @@
           <option value="">Selecciona un componente</option>
           {% for c in componentes %}
             <option value="{{ c['id'] }}">
-              {{ c['codigo'] }} — {{ c['nombre'] }}{% if session_multi_area %} ({{ AREAS[c['area']] }}){% endif %} (stock: {{ c['cantidad'] }})
+              {{ c['codigo'] }} — {{ c['nombre'] }} (stock: {{ c['cantidad'] }})
             </option>
           {% endfor %}
         </select>
@@ -77,17 +77,6 @@
           <label for="stock_minimo">Stock mínimo</label>
           <input type="number" id="stock_minimo" name="stock_minimo" min="0" value="0" style="max-width:160px;">
         </div>
-        {% if session_multi_area %}
-        <div class="form-group">
-          <label for="area">Área</label>
-          <select id="area" name="area">
-            <option value="">Selecciona un área</option>
-            {% for code, label in AREAS.items() %}
-              <option value="{{ code }}">{{ label }}</option>
-            {% endfor %}
-          </select>
-        </div>
-        {% endif %}
       </div>
     </div>
 
