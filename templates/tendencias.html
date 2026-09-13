@@ -4,14 +4,6 @@
 <div class="page-title">Tendencias de uso</div>
 
 <form method="get" class="actions">
-  {% if session_multi_area %}
-  <select name="area" onchange="this.form.submit()">
-    <option value="" {% if not filtro_area %}selected{% endif %}>Todas las áreas</option>
-    {% for code, label in AREAS.items() %}
-      <option value="{{ code }}" {% if filtro_area == code %}selected{% endif %}>{{ label }}</option>
-    {% endfor %}
-  </select>
-  {% endif %}
   <select name="dias" onchange="this.form.submit()">
     <option value="30" {% if dias == 30 %}selected{% endif %}>Últimos 30 días</option>
     <option value="90" {% if dias == 90 %}selected{% endif %}>Últimos 90 días</option>
@@ -26,14 +18,13 @@
     {% if mas_usados %}
     <table>
       <thead>
-        <tr><th>Código SAP</th><th>Nombre</th>{% if session_multi_area %}<th>Área</th>{% endif %}<th>Total retirado</th><th>Movimientos</th></tr>
+        <tr><th>Código SAP</th><th>Nombre</th><th>Total retirado</th><th>Movimientos</th></tr>
       </thead>
       <tbody>
         {% for m in mas_usados %}
         <tr>
           <td>{{ m['codigo'] }}</td>
           <td>{{ m['nombre'] }}</td>
-          {% if session_multi_area %}<td><span class="badge {{ m['area'] }}">{{ AREAS[m['area']] }}</span></td>{% endif %}
           <td>{{ m['total_retirado'] }}</td>
           <td>{{ m['movimientos'] }}</td>
         </tr>
@@ -53,14 +44,13 @@
     {% if sugerencias %}
     <table>
       <thead>
-        <tr><th>Código SAP</th><th>Nombre</th>{% if session_multi_area %}<th>Área</th>{% endif %}<th>Stock mínimo actual</th><th>Consumo semanal promedio</th><th>Sugerencia</th></tr>
+        <tr><th>Código SAP</th><th>Nombre</th><th>Stock mínimo actual</th><th>Consumo semanal promedio</th><th>Sugerencia</th></tr>
       </thead>
       <tbody>
         {% for s in sugerencias %}
         <tr>
           <td>{{ s['componente']['codigo'] }}</td>
           <td>{{ s['componente']['nombre'] }}</td>
-          {% if session_multi_area %}<td><span class="badge {{ s['componente']['area'] }}">{{ AREAS[s['componente']['area']] }}</span></td>{% endif %}
           <td>{{ s['componente']['stock_minimo'] }}</td>
           <td>{{ s['promedio_semanal'] }}</td>
           <td>
@@ -86,14 +76,13 @@
     {% if sin_movimiento %}
     <table>
       <thead>
-        <tr><th>Código SAP</th><th>Nombre</th>{% if session_multi_area %}<th>Área</th>{% endif %}<th>Stock actual</th></tr>
+        <tr><th>Código SAP</th><th>Nombre</th><th>Stock actual</th></tr>
       </thead>
       <tbody>
         {% for c in sin_movimiento %}
         <tr>
           <td>{{ c['codigo'] }}</td>
           <td>{{ c['nombre'] }}</td>
-          {% if session_multi_area %}<td><span class="badge {{ c['area'] }}">{{ AREAS[c['area']] }}</span></td>{% endif %}
           <td>{{ c['cantidad'] }}</td>
         </tr>
         {% endfor %}
