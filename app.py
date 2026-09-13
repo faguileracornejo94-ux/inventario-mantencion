@@ -153,9 +153,19 @@ def areas_del_usuario():
 
 
 def current_user_area():
-    """None => rol multi-área (ve/filtra entre ambas). 'pyp' o 'mejoras' => restringido a esa única área."""
+    """Área de trabajo efectiva de la sesión actual.
+
+    - Rol de una sola área (preparador_kit, electromecanico): siempre esa área.
+    - Rol multi-área (admin, planificador): el área elegida en session['area_activa'],
+      o None si todavía no ha elegido con qué área trabajar.
+    """
     areas = areas_del_usuario()
-    return areas[0] if len(areas) == 1 else None
+    if len(areas) == 1:
+        return areas[0]
+    if len(areas) > 1:
+        activa = session.get("area_activa")
+        return activa if activa in areas else None
+    return None
 
 
 def area_permitida(area):
@@ -163,16 +173,21 @@ def area_permitida(area):
     return area in areas_del_usuario()
 
 
+def area_requerida(view):
+    """Exige que ya haya un área activa elegida (roles multi-área deben elegir primero)."""
+    @wraps(view)
+    def wrapped(*args, **kwargs):
+        if current_user_area() is None:
+            return redirect(url_for("inicio"))
+        return view(*args, **kwargs)
+    return wrapped
+
+
 @app.context_processor
 def inject_globals():
     areas = areas_del_usuario()
     multi_area = len(areas) > 1
-    if multi_area:
-        area_nombre = "Todas las áreas"
-    elif areas:
-        area_nombre = AREAS.get(areas[0], "")
-    else:
-        area_nombre = ""
+    area_activa = current_user_area()
     return {
         "AREAS": AREAS,
         "ROLE_LABELS": ROLE_LABELS,
@@ -181,7 +196,8 @@ def inject_globals():
         "session_nombre": session.get("nombre"),
         "session_rol": session.get("rol"),
         "session_user_id": session.get("user_id"),
-        "session_area_nombre": area_nombre,
+        "session_area_nombre": AREAS.get(area_activa, ""),
+        "session_area_activa": area_activa,
         "session_multi_area": multi_area,
     }
 
@@ -229,48 +245,58 @@ def logout():
 @app.route("/inicio")
 @login_required
 def inicio():
+    if len(areas_del_usuario()) > 1 and current_user_area() is None:
+        return render_template("elegir_area.html")
     return render_template("inicio.html")
+
+
+@app.route("/area/<area>")
+@login_required
+def elegir_area(area):
+    if area not in areas_del_usuario():
+        abort(403)
+    session["area_activa"] = area
+    return redirect(url_for("inicio"))
+
+
+@app.route("/area/cambiar")
+@login_required
+def cambiar_area():
+    session.pop("area_activa", None)
+    return redirect(url_for("inicio"))
 
 
 @app.route("/dashboard")
 @login_required
+@area_requerida
 def dashboard():
     db = get_db()
-    u_area = current_user_area()
-    filtro_area = request.args.get("area") if u_area is None else u_area
-
-    where = "" if not filtro_area else "WHERE area = ?"
-    params = () if not filtro_area else (filtro_area,)
+    area = current_user_area()
 
     total_componentes = db.execute(
-        f"SELECT COUNT(*) FROM componentes {where}", params
+        "SELECT COUNT(*) FROM componentes WHERE area = ?", (area,)
     ).fetchone()[0]
     total_unidades = db.execute(
-        f"SELECT COALESCE(SUM(cantidad), 0) FROM componentes {where}", params
+        "SELECT COALESCE(SUM(cantidad), 0) FROM componentes WHERE area = ?", (area,)
     ).fetchone()[0]
     sin_stock = db.execute(
-        f"SELECT COUNT(*) FROM componentes {where}{' AND' if where else 'WHERE'} cantidad <= stock_minimo",
-        params,
+        "SELECT COUNT(*) FROM componentes WHERE area = ? AND cantidad <= stock_minimo", (area,)
     ).fetchone()[0]
 
     hoy = datetime.now().strftime("%Y-%m-%d")
-    mov_where = "WHERE fecha LIKE ?" if not filtro_area else "WHERE fecha LIKE ? AND area = ?"
-    mov_params = (f"{hoy}%",) if not filtro_area else (f"{hoy}%", filtro_area)
     movimientos_hoy = db.execute(
-        f"SELECT COUNT(*) FROM movimientos {mov_where}", mov_params
+        "SELECT COUNT(*) FROM movimientos WHERE fecha LIKE ? AND area = ?",
+        (f"{hoy}%", area),
     ).fetchone()[0]
 
-    ultimos_where = "" if not filtro_area else "WHERE area = ?"
-    ultimos_params = () if not filtro_area else (filtro_area,)
     ultimos_movimientos = db.execute(
-        f"SELECT * FROM movimientos {ultimos_where} ORDER BY id DESC LIMIT 10",
-        ultimos_params,
+        "SELECT * FROM movimientos WHERE area = ? ORDER BY id DESC LIMIT 10", (area,)
     ).fetchall()
 
     bajo_stock = db.execute(
-        f"SELECT * FROM componentes {where}{' AND' if where else 'WHERE'} cantidad <= stock_minimo "
+        "SELECT * FROM componentes WHERE area = ? AND cantidad <= stock_minimo "
         "ORDER BY nombre LIMIT 10",
-        params,
+        (area,),
     ).fetchall()
 
     return render_template(
@@ -281,7 +307,6 @@ def dashboard():
         movimientos_hoy=movimientos_hoy,
         ultimos_movimientos=ultimos_movimientos,
         bajo_stock=bajo_stock,
-        filtro_area=filtro_area,
     )
 
 
@@ -291,20 +316,14 @@ def dashboard():
 
 @app.route("/componentes")
 @login_required
+@area_requerida
 def componentes_list():
     db = get_db()
-    u_area = current_user_area()
-    filtro_area = request.args.get("area") if u_area is None else u_area
+    area = current_user_area()
     q = request.args.get("q", "").strip()
 
-    sql = "SELECT * FROM componentes WHERE 1=1"
-    params = []
-    if filtro_area in AREAS:
-        sql += " AND area = ?"
-        params.append(filtro_area)
-    elif u_area is not None:
-        sql += " AND area = ?"
-        params.append(u_area)
+    sql = "SELECT * FROM componentes WHERE area = ?"
+    params = [area]
     if q:
         sql += " AND (codigo LIKE ? OR nombre LIKE ? OR categoria LIKE ? OR ubicacion LIKE ?)"
         like = f"%{q}%"
@@ -316,29 +335,26 @@ def componentes_list():
         "componentes_list.html",
         componentes=componentes,
         q=q,
-        filtro_area=filtro_area,
     )
 
 
 @app.route("/componentes/nuevo", methods=["GET", "POST"])
 @login_required
+@area_requerida
 def componente_nuevo():
-    u_area = current_user_area()
+    area = current_user_area()
     if request.method == "POST":
         codigo = request.form.get("codigo", "").strip()
         nombre = request.form.get("nombre", "").strip()
         descripcion = request.form.get("descripcion", "").strip()
         categoria = request.form.get("categoria", "").strip()
         ubicacion = request.form.get("ubicacion", "").strip()
-        area = u_area or request.form.get("area", "")
         cantidad = request.form.get("cantidad", "0")
         stock_minimo = request.form.get("stock_minimo", "0")
 
-        if not codigo or not nombre or area not in AREAS:
-            flash("Código SAP, nombre y área son obligatorios.", "error")
+        if not codigo or not nombre:
+            flash("Código SAP y nombre son obligatorios.", "error")
             return render_template("componente_form.html", componente=request.form)
-        if not area_permitida(area):
-            abort(403)
 
         db = get_db()
         try:
@@ -435,8 +451,9 @@ def _fecha_valida_o_hoy(valor):
 
 @app.route("/ingreso", methods=["GET", "POST"])
 @login_required
+@area_requerida
 def ingreso():
-    u_area = current_user_area()
+    area_activa = current_user_area()
     db = get_db()
 
     if request.method == "POST":
@@ -458,22 +475,20 @@ def ingreso():
         if modo == "nuevo":
             codigo = request.form.get("codigo", "").strip()
             nombre = request.form.get("nombre", "").strip()
-            area = u_area or request.form.get("area", "")
             stock_minimo = request.form.get("stock_minimo", "0")
-            if not codigo or not nombre or area not in AREAS:
-                flash("Código SAP, nombre y área son obligatorios para un componente nuevo.", "error")
+            if not codigo or not nombre:
+                flash("Código SAP y nombre son obligatorios para un componente nuevo.", "error")
                 return redirect(url_for("ingreso"))
-            if not area_permitida(area):
-                abort(403)
             categoria = request.form.get("categoria", "").strip()
             ubicacion = request.form.get("ubicacion", "").strip()
             try:
                 cur = db.execute(
                     "INSERT INTO componentes (codigo, nombre, categoria, ubicacion, area, "
                     "cantidad, stock_minimo) VALUES (?, ?, ?, ?, ?, ?, ?)",
-                    (codigo, nombre, categoria, ubicacion, area, cantidad, int(stock_minimo or 0)),
+                    (codigo, nombre, categoria, ubicacion, area_activa, cantidad, int(stock_minimo or 0)),
                 )
                 componente_id = cur.lastrowid
+                area = area_activa
             except sqlite3.IntegrityError:
                 flash(f'Ya existe un componente con el código SAP "{codigo}". Usa "Ingreso a existente".', "error")
                 return redirect(url_for("ingreso"))
@@ -482,11 +497,9 @@ def ingreso():
             componente = db.execute(
                 "SELECT * FROM componentes WHERE id = ?", (componente_id,)
             ).fetchone()
-            if componente is None:
+            if componente is None or componente["area"] != area_activa:
                 flash("Selecciona un componente válido.", "error")
                 return redirect(url_for("ingreso"))
-            if not area_permitida(componente["area"]):
-                abort(403)
             db.execute(
                 "UPDATE componentes SET cantidad = cantidad + ? WHERE id = ?",
                 (cantidad, componente_id),
@@ -504,15 +517,16 @@ def ingreso():
         flash(f"Ingreso registrado: +{cantidad} de {nombre}.", "success")
         return redirect(url_for("ingreso"))
 
-    componentes = _componentes_disponibles(u_area)
+    componentes = _componentes_disponibles(area_activa)
     hoy = datetime.now().strftime("%Y-%m-%d")
     return render_template("ingreso.html", componentes=componentes, hoy=hoy)
 
 
 @app.route("/retiro", methods=["GET", "POST"])
 @login_required
+@area_requerida
 def retiro():
-    u_area = current_user_area()
+    area_activa = current_user_area()
     db = get_db()
 
     if request.method == "POST":
@@ -522,10 +536,8 @@ def retiro():
             "SELECT * FROM componentes WHERE id = ?", (componente_id,)
         ).fetchone()
 
-        if componente is None:
+        if componente is None or componente["area"] != area_activa:
             flash("Selecciona un componente válido.", "error")
-        elif not area_permitida(componente["area"]):
-            abort(403)
         elif cantidad <= 0:
             flash("La cantidad debe ser mayor a 0.", "error")
         elif cantidad > componente["cantidad"]:
@@ -548,7 +560,7 @@ def retiro():
             flash(f'Retiro registrado: -{cantidad} de {componente["nombre"]}.', "success")
         return redirect(url_for("retiro"))
 
-    componentes = [c for c in _componentes_disponibles(u_area) if c["cantidad"] > 0]
+    componentes = [c for c in _componentes_disponibles(area_activa) if c["cantidad"] > 0]
     return render_template("retiro.html", componentes=componentes)
 
 
@@ -558,19 +570,17 @@ def retiro():
 
 @app.route("/buscar")
 @login_required
+@area_requerida
 def buscar():
-    u_area = current_user_area()
+    area = current_user_area()
     q = request.args.get("q", "").strip()
     resultados = []
     if q:
         db = get_db()
-        sql = ("SELECT * FROM componentes WHERE "
+        sql = ("SELECT * FROM componentes WHERE area = ? AND "
                "(codigo LIKE ? OR nombre LIKE ? OR categoria LIKE ? OR ubicacion LIKE ?)")
         like = f"%{q}%"
-        params = [like, like, like, like]
-        if u_area is not None:
-            sql += " AND area = ?"
-            params.append(u_area)
+        params = [area, like, like, like, like]
         sql += " ORDER BY nombre"
         resultados = db.execute(sql, params).fetchall()
     return render_template("buscar.html", q=q, resultados=resultados)
@@ -582,48 +592,41 @@ def buscar():
 
 @app.route("/tendencias")
 @login_required
+@area_requerida
 def tendencias():
     db = get_db()
-    u_area = current_user_area()
-    filtro_area = request.args.get("area") if u_area is None else u_area
+    area = current_user_area()
 
     dias = int(request.args.get("dias", "90") or 90)
     desde = (datetime.now() - timedelta(days=dias)).strftime("%Y-%m-%d")
 
-    area_sql = " AND m.area = ?" if filtro_area in AREAS else ""
-    area_params = (filtro_area,) if filtro_area in AREAS else ()
-
     mas_usados = db.execute(
-        f"""
+        """
         SELECT m.codigo, m.nombre, m.area, SUM(m.cantidad) AS total_retirado,
                COUNT(*) AS movimientos
         FROM movimientos m
-        WHERE m.tipo = 'retiro' AND m.fecha >= ? {area_sql}
+        WHERE m.tipo = 'retiro' AND m.fecha >= ? AND m.area = ?
         GROUP BY m.componente_id, m.codigo, m.nombre, m.area
         ORDER BY total_retirado DESC
         LIMIT 15
         """,
-        (desde, *area_params),
+        (desde, area),
     ).fetchall()
 
-    comp_sql = "SELECT * FROM componentes WHERE 1=1"
-    comp_params = []
-    if filtro_area in AREAS:
-        comp_sql += " AND area = ?"
-        comp_params.append(filtro_area)
-
-    componentes = db.execute(comp_sql, comp_params).fetchall()
+    componentes = db.execute(
+        "SELECT * FROM componentes WHERE area = ?", (area,)
+    ).fetchall()
 
     usados_ids = set()
     uso_por_componente = {}
     for row in db.execute(
-        f"""
+        """
         SELECT componente_id, SUM(cantidad) AS total
         FROM movimientos m
-        WHERE tipo = 'retiro' AND fecha >= ? {area_sql}
+        WHERE tipo = 'retiro' AND fecha >= ? AND m.area = ?
         GROUP BY componente_id
         """,
-        (desde, *area_params),
+        (desde, area),
     ).fetchall():
         if row["componente_id"] is not None:
             usados_ids.add(row["componente_id"])
@@ -652,7 +655,6 @@ def tendencias():
     return render_template(
         "tendencias.html",
         dias=dias,
-        filtro_area=filtro_area,
         mas_usados=mas_usados,
         sin_movimiento=sin_movimiento[:20],
         sugerencias=sugerencias[:20],
@@ -675,24 +677,20 @@ def _clasificar_stock(cantidad, stock_minimo):
 
 @app.route("/reporte/stock.xlsx")
 @login_required
+@area_requerida
 def reporte_stock_excel():
     db = get_db()
-    u_area = current_user_area()
-    filtro_area = request.args.get("area") if u_area is None else u_area
+    area = current_user_area()
 
-    sql = "SELECT * FROM componentes WHERE 1=1"
-    params = []
-    if filtro_area in AREAS:
-        sql += " AND area = ?"
-        params.append(filtro_area)
-    sql += " ORDER BY area, nombre"
-    componentes = db.execute(sql, params).fetchall()
+    componentes = db.execute(
+        "SELECT * FROM componentes WHERE area = ? ORDER BY nombre", (area,)
+    ).fetchall()
 
     wb = Workbook()
     ws = wb.active
     ws.title = "Stock"
 
-    headers = ["Código SAP", "Nombre", "Categoría", "Ubicación", "Área",
+    headers = ["Código SAP", "Nombre", "Categoría", "Ubicación",
                "Cantidad", "Stock mínimo", "Estado"]
     ws.append(headers)
     header_fill = PatternFill(start_color="0F2540", end_color="0F2540", fill_type="solid")
@@ -715,10 +713,10 @@ def reporte_stock_excel():
         resumen[estado] += 1
         row = [
             c["codigo"], c["nombre"], c["categoria"] or "", c["ubicacion"] or "",
-            AREAS.get(c["area"], c["area"]), c["cantidad"], c["stock_minimo"], estado,
+            c["cantidad"], c["stock_minimo"], estado,
         ]
         ws.append(row)
-        estado_cell = ws.cell(row=ws.max_row, column=8)
+        estado_cell = ws.cell(row=ws.max_row, column=7)
         estado_cell.fill = estado_fill.get(estado)
 
     for col_idx, header in enumerate(headers, start=1):
@@ -726,6 +724,7 @@ def reporte_stock_excel():
         ws.column_dimensions[get_column_letter(col_idx)].width = width
 
     resumen_ws = wb.create_sheet("Resumen")
+    resumen_ws.append(["Área", AREAS.get(area, area)])
     resumen_ws.append(["Generado", datetime.now().strftime("%Y-%m-%d %H:%M")])
     resumen_ws.append([])
     resumen_ws.append(["Estado", "Cantidad de componentes"])
@@ -738,7 +737,7 @@ def reporte_stock_excel():
     wb.save(buffer)
     buffer.seek(0)
 
-    nombre_archivo = f"informe_stock_{datetime.now().strftime('%Y-%m-%d')}.xlsx"
+    nombre_archivo = f"informe_stock_{area}_{datetime.now().strftime('%Y-%m-%d')}.xlsx"
     return send_file(
         buffer,
         as_attachment=True,
