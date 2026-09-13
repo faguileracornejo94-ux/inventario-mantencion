@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block title %}Elige un área — Inventario Bodega{% endblock %}
+{% block content %}
+<div class="page-title">Hola, {{ session_nombre }}</div>
+<div class="page-subtitle">Elige el área con la que quieres trabajar:</div>
+
+<div class="grid-menu">
+  {% if 'pyp' in ROLE_AREAS.get(session_rol, []) %}
+  <a class="menu-card" href="{{ url_for('elegir_area', area='pyp') }}">
+    <div class="icon">🛠️</div>
+    <div class="title">Mantención PYP</div>
+    <div class="desc">Gestionar componentes, movimientos e informes del área {{ AREAS['pyp'] }}.</div>
+  </a>
+  {% endif %}
+  {% if 'mejoras' in ROLE_AREAS.get(session_rol, []) %}
+  <a class="menu-card" href="{{ url_for('elegir_area', area='mejoras') }}">
+    <div class="icon">🔧</div>
+    <div class="title">Mantención Mejoras</div>
+    <div class="desc">Gestionar componentes, movimientos e informes del área {{ AREAS['mejoras'] }}.</div>
+  </a>
+  {% endif %}
+</div>
+
+{% if session_rol == 'admin' %}
+<p class="hint">También puedes <a href="{{ url_for('usuarios_list') }}">gestionar usuarios</a> sin elegir un área.</p>
+{% endif %}
+{% endblock %}
