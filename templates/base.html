@@ -16,6 +16,9 @@
     </div>
     <nav>
       <a href="{{ url_for('inicio') }}">Inicio</a>
+      {% if session_multi_area and session_area_activa %}
+        <a href="{{ url_for('cambiar_area') }}">Cambiar de área</a>
+      {% endif %}
       {% if session_rol == 'admin' %}
         <a href="{{ url_for('usuarios_list') }}">Usuarios</a>
       {% endif %}
