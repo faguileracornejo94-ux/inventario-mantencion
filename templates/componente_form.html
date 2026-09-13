@@ -2,6 +2,7 @@
 {% block title %}{{ 'Editar' if editar else 'Nuevo' }} componente{% endblock %}
 {% block content %}
 <div class="page-title">{{ 'Editar componente' if editar else 'Nuevo componente' }}</div>
+{% if not editar %}<p class="hint">Se creará en el área: <strong>{{ session_area_nombre }}</strong></p>{% endif %}
 
 <div class="card" style="max-width:560px;">
   <form method="post">
@@ -32,18 +33,6 @@
         <input type="text" id="ubicacion" name="ubicacion" value="{{ componente['ubicacion'] if componente else '' }}" placeholder="Ej: Estante 3B">
       </div>
     </div>
-
-    {% if not editar and session_multi_area %}
-    <div class="form-group">
-      <label for="area">Área</label>
-      <select id="area" name="area" required>
-        <option value="">Selecciona un área</option>
-        {% for code, label in AREAS.items() %}
-          <option value="{{ code }}">{{ label }}</option>
-        {% endfor %}
-      </select>
-    </div>
-    {% endif %}
 
     <div class="form-row">
       {% if not editar %}
