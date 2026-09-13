@@ -2,22 +2,12 @@
 {% block title %}Inicio — Inventario Bodega{% endblock %}
 {% block content %}
 <div class="page-title">Hola, {{ session_nombre }}</div>
-
-{% if session_multi_area %}
-<div class="page-subtitle">Elige un área para trabajar:</div>
-<div class="grid-menu">
-  <a class="menu-card" href="{{ url_for('componentes_list', area='pyp') }}">
-    <div class="icon">🛠️</div>
-    <div class="title">Mantención PYP</div>
-    <div class="desc">Componentes y stock del área Mantenimiento PyP.</div>
-  </a>
-  <a class="menu-card" href="{{ url_for('componentes_list', area='mejoras') }}">
-    <div class="icon">🔧</div>
-    <div class="title">Mantención Mejoras</div>
-    <div class="desc">Componentes y stock del área Mantenimiento Mejoras.</div>
-  </a>
+<div class="page-subtitle">
+  Trabajando en: <strong>{{ session_area_nombre }}</strong>
+  {% if session_multi_area %}
+    · <a href="{{ url_for('cambiar_area') }}">Cambiar de área</a>
+  {% endif %}
 </div>
-{% endif %}
 
 <div class="grid-menu">
   <a class="menu-card" href="{{ url_for('componentes_list') }}">
