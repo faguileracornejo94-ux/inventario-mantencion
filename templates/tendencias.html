@@ -38,26 +38,42 @@
 </div>
 
 <div class="card">
-  <strong>Sugerencias para ajustar el stock mínimo</strong>
-  <p class="hint">Estimación simple según consumo promedio semanal del período elegido. Revisa antes de aplicar cambios.</p>
+  <strong>Punto de reorden</strong>
+  <p class="hint">Se calcula con el consumo real del período elegido y el lead time de cada componente:
+    (consumo promedio diario × lead time) + stock de seguridad. El stock de seguridad crece si el consumo
+    es irregular, con un nivel de servicio del 95%.</p>
   <div class="table-wrap" style="margin-top:10px;">
-    {% if sugerencias %}
+    {% if puntos_reorden %}
     <table>
       <thead>
-        <tr><th>Código SAP</th><th>Nombre</th><th>Stock mínimo actual</th><th>Consumo semanal promedio</th><th>Sugerencia</th></tr>
+        <tr>
+          <th>Código SAP</th><th>Nombre</th><th>Lead time</th>
+          <th>Mínimo actual</th><th>Punto de reorden</th><th>Sugerencia</th><th></th>
+        </tr>
       </thead>
       <tbody>
-        {% for s in sugerencias %}
+        {% for p in puntos_reorden %}
         <tr>
-          <td>{{ s['componente']['codigo'] }}</td>
-          <td>{{ s['componente']['nombre'] }}</td>
-          <td>{{ s['componente']['stock_minimo'] }}</td>
-          <td>{{ s['promedio_semanal'] }}</td>
+          <td>{{ p['componente']['codigo'] }}</td>
+          <td>{{ p['componente']['nombre'] }}</td>
+          <td>{{ p['calculo']['lead_time'] }} días</td>
+          <td>{{ p['componente']['stock_minimo'] }}</td>
+          <td>{{ p['calculo']['punto_reorden'] }}</td>
           <td>
-            {% if s['tipo'] == 'subir' %}
-              <span class="badge retiro">Subir mínimo</span>
+            {% if p['tipo'] == 'subir' %}
+              <span class="badge retiro">Subir a {{ p['calculo']['punto_reorden'] }}</span>
+            {% elif p['tipo'] == 'bajar' %}
+              <span class="badge ingreso">Bajar a {{ p['calculo']['punto_reorden'] }}</span>
             {% else %}
-              <span class="badge">Sin consumo — revisar mínimo</span>
+              <span class="badge">Sin cambios</span>
+            {% endif %}
+          </td>
+          <td>
+            {% if p['tipo'] != 'ok' %}
+            <form class="inline" method="post" action="{{ url_for('aplicar_punto_reorden', comp_id=p['componente']['id']) }}">
+              <input type="hidden" name="dias" value="{{ dias }}">
+              <button type="submit" class="btn btn-secondary btn-sm">Aplicar</button>
+            </form>
             {% endif %}
           </td>
         </tr>
@@ -65,9 +81,17 @@
       </tbody>
     </table>
     {% else %}
-    <div class="empty-state">No hay sugerencias por ahora.</div>
+    <div class="empty-state">No hay componentes con lead time configurado todavía.</div>
     {% endif %}
   </div>
+  {% if sin_lead_time %}
+  <p class="hint" style="margin-top:14px;">
+    Sin lead time configurado (no se les puede calcular el punto de reorden):
+    {% for c in sin_lead_time %}
+      <a href="{{ url_for('componente_editar', comp_id=c['id']) }}">{{ c['nombre'] }}</a>{% if not loop.last %}, {% endif %}
+    {% endfor %}
+  </p>
+  {% endif %}
 </div>
 
 <div class="card">
