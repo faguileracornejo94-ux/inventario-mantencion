@@ -52,6 +52,9 @@ TURNOS = ["38", "44"]
 # Umbrales para clasificar el stock de un componente frente a su mínimo.
 UMBRAL_PUNTO_PEDIDO = 1.5  # <= 1.5x el mínimo => "a punto de estar crítico"
 
+# Nivel de servicio usado para el cálculo del punto de reorden (95% => Z=1.65).
+SERVICE_LEVEL_Z = 1.65
+
 
 # ---------------------------------------------------------------------------
 # Base de datos
@@ -94,7 +97,8 @@ def init_db():
             ubicacion TEXT,
             area TEXT NOT NULL CHECK (area IN ('pyp', 'mejoras')),
             cantidad INTEGER NOT NULL DEFAULT 0,
-            stock_minimo INTEGER NOT NULL DEFAULT 0
+            stock_minimo INTEGER NOT NULL DEFAULT 0,
+            lead_time_dias INTEGER NOT NULL DEFAULT 0
         );
 
         CREATE TABLE IF NOT EXISTS movimientos (
@@ -112,6 +116,11 @@ def init_db():
         );
         """
     )
+    # Migración: agrega lead_time_dias a bases de datos creadas antes de este campo.
+    try:
+        db.execute("ALTER TABLE componentes ADD COLUMN lead_time_dias INTEGER NOT NULL DEFAULT 0")
+    except sqlite3.OperationalError:
+        pass  # la columna ya existe
     # Usuario admin por defecto (idempotente)
     db.execute(
         "INSERT OR IGNORE INTO usuarios (username, password_hash, nombre, rol) "
@@ -351,6 +360,7 @@ def componente_nuevo():
         ubicacion = request.form.get("ubicacion", "").strip()
         cantidad = request.form.get("cantidad", "0")
         stock_minimo = request.form.get("stock_minimo", "0")
+        lead_time_dias = request.form.get("lead_time_dias", "0")
 
         if not codigo or not nombre:
             flash("Código SAP y nombre son obligatorios.", "error")
@@ -360,9 +370,9 @@ def componente_nuevo():
         try:
             db.execute(
                 "INSERT INTO componentes (codigo, nombre, descripcion, categoria, ubicacion, "
-                "area, cantidad, stock_minimo) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                "area, cantidad, stock_minimo, lead_time_dias) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (codigo, nombre, descripcion, categoria, ubicacion, area,
-                 int(cantidad or 0), int(stock_minimo or 0)),
+                 int(cantidad or 0), int(stock_minimo or 0), int(lead_time_dias or 0)),
             )
             db.commit()
         except sqlite3.IntegrityError:
@@ -391,6 +401,7 @@ def componente_editar(comp_id):
         categoria = request.form.get("categoria", "").strip()
         ubicacion = request.form.get("ubicacion", "").strip()
         stock_minimo = request.form.get("stock_minimo", "0")
+        lead_time_dias = request.form.get("lead_time_dias", "0")
 
         if not nombre:
             flash("El nombre es obligatorio.", "error")
@@ -398,8 +409,9 @@ def componente_editar(comp_id):
 
         db.execute(
             "UPDATE componentes SET nombre = ?, descripcion = ?, categoria = ?, "
-            "ubicacion = ?, stock_minimo = ? WHERE id = ?",
-            (nombre, descripcion, categoria, ubicacion, int(stock_minimo or 0), comp_id),
+            "ubicacion = ?, stock_minimo = ?, lead_time_dias = ? WHERE id = ?",
+            (nombre, descripcion, categoria, ubicacion, int(stock_minimo or 0),
+             int(lead_time_dias or 0), comp_id),
         )
         db.commit()
         flash("Componente actualizado.", "success")
@@ -449,6 +461,64 @@ def _fecha_valida_o_hoy(valor):
         return hoy
 
 
+# ---------------------------------------------------------------------------
+# Punto de reorden (ROP) — se recalcula con el historial de movimientos, no
+# es un valor fijo. Fórmula: (consumo promedio diario x lead time) + stock de
+# seguridad, donde el stock de seguridad crece según qué tan irregular es el
+# consumo del componente (su desviación estándar) y el nivel de servicio elegido.
+# ---------------------------------------------------------------------------
+
+def _consumo_diario_serie(componente_id, dias):
+    """Unidades retiradas por día en los últimos `dias` días, rellenando con 0
+    los días sin movimiento (para que la desviación estándar refleje también
+    los tramos sin consumo, no solo los días con retiro)."""
+    db = get_db()
+    desde_dt = datetime.now() - timedelta(days=dias)
+    desde = desde_dt.strftime("%Y-%m-%d")
+    filas = db.execute(
+        "SELECT fecha, cantidad FROM movimientos "
+        "WHERE componente_id = ? AND tipo = 'retiro' AND fecha >= ?",
+        (componente_id, desde),
+    ).fetchall()
+
+    por_dia = {}
+    for f in filas:
+        dia = f["fecha"][:10]
+        por_dia[dia] = por_dia.get(dia, 0) + f["cantidad"]
+
+    return [
+        por_dia.get((desde_dt + timedelta(days=i)).strftime("%Y-%m-%d"), 0)
+        for i in range(dias)
+    ]
+
+
+def _punto_reorden(componente, dias=90):
+    """Calcula el punto de reorden para un componente, o None si no tiene
+    lead time configurado (no se puede calcular sin ese dato)."""
+    lead_time = componente["lead_time_dias"] or 0
+    if lead_time <= 0:
+        return None
+
+    serie = _consumo_diario_serie(componente["id"], dias)
+    n = len(serie) or 1
+    promedio = sum(serie) / n
+    varianza = sum((x - promedio) ** 2 for x in serie) / n
+    desviacion = varianza ** 0.5
+
+    demanda_lead_time = promedio * lead_time
+    stock_seguridad = SERVICE_LEVEL_Z * desviacion * (lead_time ** 0.5)
+    punto_reorden = max(0, round(demanda_lead_time + stock_seguridad))
+
+    return {
+        "promedio_diario": round(promedio, 3),
+        "desviacion_diaria": round(desviacion, 3),
+        "lead_time": lead_time,
+        "demanda_lead_time": round(demanda_lead_time, 1),
+        "stock_seguridad": round(stock_seguridad, 1),
+        "punto_reorden": punto_reorden,
+    }
+
+
 @app.route("/ingreso", methods=["GET", "POST"])
 @login_required
 @area_requerida
@@ -476,6 +546,7 @@ def ingreso():
             codigo = request.form.get("codigo", "").strip()
             nombre = request.form.get("nombre", "").strip()
             stock_minimo = request.form.get("stock_minimo", "0")
+            lead_time_dias = request.form.get("lead_time_dias", "0")
             if not codigo or not nombre:
                 flash("Código SAP y nombre son obligatorios para un componente nuevo.", "error")
                 return redirect(url_for("ingreso"))
@@ -484,8 +555,9 @@ def ingreso():
             try:
                 cur = db.execute(
                     "INSERT INTO componentes (codigo, nombre, categoria, ubicacion, area, "
-                    "cantidad, stock_minimo) VALUES (?, ?, ?, ?, ?, ?, ?)",
-                    (codigo, nombre, categoria, ubicacion, area_activa, cantidad, int(stock_minimo or 0)),
+                    "cantidad, stock_minimo, lead_time_dias) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                    (codigo, nombre, categoria, ubicacion, area_activa, cantidad,
+                     int(stock_minimo or 0), int(lead_time_dias or 0)),
                 )
                 componente_id = cur.lastrowid
                 area = area_activa
@@ -634,31 +706,62 @@ def tendencias():
 
     sin_movimiento = [c for c in componentes if c["id"] not in usados_ids]
 
-    sugerencias = []
-    semanas = max(dias / 7.0, 1)
+    # Punto de reorden real por componente (requiere lead time configurado).
+    puntos_reorden = []
+    sin_lead_time = []
     for c in componentes:
-        total = uso_por_componente.get(c["id"], 0)
-        promedio_semanal = total / semanas
-        if total > 0 and promedio_semanal * 2 > c["stock_minimo"]:
-            sugerencias.append({
-                "componente": c,
-                "promedio_semanal": round(promedio_semanal, 1),
-                "tipo": "subir",
-            })
-        elif total == 0 and c["stock_minimo"] > 0:
-            sugerencias.append({
-                "componente": c,
-                "promedio_semanal": 0,
-                "tipo": "revisar",
-            })
+        resultado = _punto_reorden(c, dias=dias)
+        if resultado is None:
+            sin_lead_time.append(c)
+            continue
+        actual = c["stock_minimo"]
+        sugerido = resultado["punto_reorden"]
+        if sugerido > actual:
+            tipo = "subir"
+        elif sugerido < actual:
+            tipo = "bajar"
+        else:
+            tipo = "ok"
+        puntos_reorden.append({"componente": c, "calculo": resultado, "tipo": tipo})
+
+    # Ordena mostrando primero los que tienen un cambio sugerido.
+    orden_tipo = {"subir": 0, "bajar": 1, "ok": 2}
+    puntos_reorden.sort(key=lambda p: orden_tipo[p["tipo"]])
 
     return render_template(
         "tendencias.html",
         dias=dias,
         mas_usados=mas_usados,
         sin_movimiento=sin_movimiento[:20],
-        sugerencias=sugerencias[:20],
+        puntos_reorden=puntos_reorden,
+        sin_lead_time=sin_lead_time,
     )
+
+
+@app.route("/componentes/<int:comp_id>/aplicar_punto_reorden", methods=["POST"])
+@login_required
+@area_requerida
+def aplicar_punto_reorden(comp_id):
+    db = get_db()
+    componente = db.execute("SELECT * FROM componentes WHERE id = ?", (comp_id,)).fetchone()
+    if componente is None or componente["area"] != current_user_area():
+        abort(404)
+
+    dias = int(request.form.get("dias", "90") or 90)
+    resultado = _punto_reorden(componente, dias=dias)
+    if resultado is None:
+        flash(f'"{componente["nombre"]}" no tiene lead time configurado todavía.', "error")
+    else:
+        db.execute(
+            "UPDATE componentes SET stock_minimo = ? WHERE id = ?",
+            (resultado["punto_reorden"], comp_id),
+        )
+        db.commit()
+        flash(
+            f'Stock mínimo de "{componente["nombre"]}" actualizado a {resultado["punto_reorden"]} '
+            f'(punto de reorden calculado).', "success"
+        )
+    return redirect(url_for("tendencias", dias=dias))
 
 
 # ---------------------------------------------------------------------------
